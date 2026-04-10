@@ -1,0 +1,168 @@
+// ==================== БЛОК buildscript ====================
+// Этот блок предназначен для зависимостей, необходимых самому скрипту Gradle.
+// Здесь указываются classpath для плагинов и библиотек, которые нужны на этапе
+// конфигурации сборки (до того, как будут применены плагины).
+buildscript {
+    repositories {
+        mavenCentral() // Репозиторий, откуда Gradle скачивает зависимости для buildscript
+    }
+    dependencies {
+        // Эти classpath больше не обязательны для Liquibase (мы используем свой JavaExec),
+        // но могут пригодиться для других плагинов. Оставляем на всякий случай.
+        classpath "org.liquibase:liquibase-core:4.29.2"
+        classpath "org.liquibase:liquibase-gradle-plugin:3.1.0"
+    }
+}
+
+// ==================== БЛОК plugins ====================
+// Здесь подключаются плагины, которые расширяют функциональность Gradle.
+plugins {
+    id 'java'          // Добавляет поддержку Java: компиляцию, тестирование, создание JAR.
+    id 'war'           // Добавляет поддержку веб-приложений: создание WAR-файла для Tomcat.
+    // Плагин Liquibase удалён, так как он несовместим с Gradle 9.4. Вместо него используем самодельную задачу.
+}
+
+// ==================== ОСНОВНЫЕ ХАРАКТЕРИСТИКИ ПРОЕКТА ====================
+group = 'com.korotkov'          // Идентификатор группы (обычно домен компании наоборот)
+version = '1.0-SNAPSHOT'        // Версия проекта
+
+def dbUrl = System.getenv("DB_URL") ?: "jdbc:mysql://localhost:3306/MyToDoApp?useSSL=false&allowPublicKeyRetrieval=true"
+def dbUsername = System.getenv("DB_USERNAME") ?: "root"
+def dbPassword = System.getenv("DB_PASSWORD") ?: "12345"
+/*Здесь используется не обычный тернарный оператор, а Elvis operator в Groovy:
+* берём значение слева - если оно null или “пустое/false-like”, берётся значение справа
+То есть: если есть DB_URL, используем его ; если нет, используем "jdbc:mysql://localhost:3306/..." */
+/*Зачем это нужно в build.gradle:
+локально ты можешь запускать проект без Docker, и тогда берутся обычные значения по умолчанию
+в Docker контейнере можно передать DB_URL, DB_USERNAME, DB_PASSWORD через environment variables
+одна и та же Gradle-задача liquibaseUpdate начинает работать и локально, и в контейнере*/
+
+// ==================== НАСТРОЙКА ВЕРСИИ JAVA ====================
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21) // Указываем версию Java (Gradle сам подберёт JDK)
+    }
+}
+
+// ==================== РЕПОЗИТОРИИ ДЛЯ ЗАВИСИМОСТЕЙ ====================
+repositories {
+    mavenCentral() // Центральный репозиторий Maven, откуда будут скачиваться библиотеки
+}
+
+// ==================== ПОЛЬЗОВАТЕЛЬСКАЯ КОНФИГУРАЦИЯ ДЛЯ LIQUIBASE ====================
+// Создаём конфигурацию, которая будет содержать библиотеки, необходимые для запуска Liquibase
+// (core и драйвер MySQL). Эта конфигурация используется в задачах liquibaseUpdate и liquibaseRollback.
+configurations {
+    liquibaseRuntime
+}
+
+// ==================== ЗАВИСИМОСТИ ПРОЕКТА ====================
+dependencies {
+    // --- Servlet API (для компиляции, не включается в WAR) ---
+    compileOnly("jakarta.servlet:jakarta.servlet-api:6.0.0")
+
+    // --- Hibernate (ORM) ---
+    implementation("org.hibernate.orm:hibernate-core:7.2.3.Final")  // Ядро Hibernate
+    implementation("jakarta.persistence:jakarta.persistence-api:3.2.0") // JPA API
+    implementation("jakarta.transaction:jakarta.transaction-api:2.0.1") // JTA API
+
+    // --- JSP и JSTL ---
+    implementation("jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.0") // API тегов JSTL
+    implementation 'org.glassfish.web:jakarta.servlet.jsp.jstl:3.0.1'            // Реализация JSTL
+
+    // --- Драйвер MySQL ---
+    implementation("com.mysql:mysql-connector-j:9.6.0")
+
+    // --- Lombok (генерация кода во время компиляции, не включается в WAR) ---
+    compileOnly 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.projectlombok:lombok:1.18.42'
+    testCompileOnly 'org.projectlombok:lombok:1.18.42'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.42'
+
+    // --- BCrypt для хеширования паролей ---
+    implementation("org.mindrot:jbcrypt:0.4")
+
+    // --- Тестирование (JUnit 5, Mockito) ---
+    testImplementation platform('org.junit:junit-bom:5.10.0')       // BOM для JUnit 5
+    testImplementation 'org.junit.jupiter:junit-jupiter'           // JUnit Jupiter API
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'   // Запускатор тестов (для IDE)
+    testImplementation 'org.mockito:mockito-core:5.11.0'           // Mockito
+    testImplementation 'org.mockito:mockito-junit-jupiter:5.11.0'  // Интеграция Mockito с JUnit 5
+
+    // --- Liquibase и драйвер для рантайма (используются в задачах) ---
+    liquibaseRuntime 'org.liquibase:liquibase-core:4.29.2'
+    liquibaseRuntime 'com.mysql:mysql-connector-j:9.6.0'
+    // picocli не нужен, удаляем
+}
+
+// ==================== ЗАДАЧА ДЛЯ ПРИМЕНЕНИЯ МИГРАЦИЙ (UPDATE) ====================
+// Создаём задачу типа JavaExec, которая запускает Liquibase с командой update.
+tasks.register('liquibaseUpdate', JavaExec) {
+    group = 'database'
+    description = 'Apply Liquibase migrations'
+
+    // Указываем classpath, содержащий Liquibase и драйвер MySQL
+    classpath = configurations.liquibaseRuntime
+    // Главный класс Liquibase (точка входа)
+    mainClass = 'liquibase.integration.commandline.Main'
+
+    // Аргументы командной строки для Liquibase
+    args = [
+            '--changeLogFile=src/main/resources/db/changelog/changelog-master.xml',  // Путь к мастер-файлу изменений
+            "--url=${dbUrl}", // JDBC URL
+            "--username=${dbUsername}",                         // Пользователь БД
+            "--password=${dbPassword}",                         // Пароль
+            '--driver=com.mysql.cj.jdbc.Driver',        // Драйвер JDBC
+            '--logLevel=info',                           // Уровень логирования
+            'update'                                     // Команда Liquibase
+    ]
+}
+
+// ==================== ЗАДАЧА ДЛЯ ОТКАТА ПОСЛЕДНЕЙ МИГРАЦИИ (ROLLBACK) ====================
+// Аналогичная задача, но с командой rollbackCount 1 (откат на один changeset).
+tasks.register('liquibaseRollback', JavaExec) {
+    group = 'database'
+    description = 'Rollback the last applied migration'
+
+    classpath = configurations.liquibaseRuntime
+    mainClass = 'liquibase.integration.commandline.Main'
+
+    args = [
+            '--changeLogFile=src/main/resources/db/changelog/changelog-master.xml',
+            "--url=${dbUrl}",
+            "--username=${dbUsername}",
+            "--password=${dbPassword}",
+            '--driver=com.mysql.cj.jdbc.Driver',
+            '--logLevel=info',
+            'rollbackCount', '1'                         // Откатить один последний changeset
+    ]
+}
+
+// ==================== НАСТРОЙКА ТЕСТИРОВАНИЯ ====================
+test {
+    useJUnitPlatform() // Использовать JUnit Platform для запуска тестов
+}
+
+// ==================== ИНСТРУКЦИИ ПО ЗАПУСКУ И АВТОМАТИЗАЦИИ ====================
+/*
+ * ЗАПУСК МИГРАЦИЙ:
+ *   ./gradlew liquibaseUpdate    – применить все новые миграции
+ *   ./gradlew liquibaseRollback  – откатить последнюю миграцию (на 1 шаг) (откат на один changeset)
+ *
+ * АВТОМАТИЗАЦИЯ UPDATE:
+ * Чтобы миграции применялись автоматически при сборке WAR, добавьте строку:
+ *   war.dependsOn liquibaseUpdate
+ * Это приведёт к тому, что перед созданием WAR-файла будет выполнена задача liquibaseUpdate.
+ *
+ * Если вы используете CI/CD, можно добавить отдельный шаг в пайплайне:
+ *   ./gradlew liquibaseUpdate
+ * перед деплоем приложения.
+ *
+ * Также можно настроить выполнение миграций при запуске приложения (например, через ServletContextListener),
+ * но для этого потребуется включить liquibase-core в обычные implementation-зависимости.
+ * Если изменения не применяются:
+Выполните две команды:
+./gradlew --stop               # останавливает все запущенные Gradle Daemon
+./gradlew liquibaseUpdate      # запускает задачу с новой конфигурацией
+После этого Gradle запустится без демона (или с новым демоном) и точно загрузит актуальный build.gradle.
+ */
