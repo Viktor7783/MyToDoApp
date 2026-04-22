@@ -56,7 +56,7 @@ docker compose up --build
 Docker Compose поднимет 3 сервиса:
 
 • db — контейнер с MySQL
-<URL_ВАШЕГО_РЕПОЗИТОРИЯ>
+
 • migrate — контейнер, который выполнит Liquibase-миграции
 
 • app — контейнер с приложением MyToDoApp в Tomcat
@@ -64,32 +64,26 @@ Docker Compose поднимет 3 сервиса:
 **Адрес приложения**
 
 После запуска приложение будет доступно по адресу:
+
 http://localhost:8080/mytodoapp/login
 или
 http://localhost:8080/mytodoapp/register
 
 **Полезные команды**
 
-Запуск в фоне
-docker compose up -d --build
+Запуск в фоне: docker compose up -d --build
 
-Остановить контейнеры
-docker compose down
+Остановить контейнеры: docker compose down
 
-Полностью удалить контейнеры и volume базы данных
-docker compose down -v
+Полностью удалить контейнеры и volume базы данных: docker compose down -v
 
-Пересобрать и заново запустить проект
-docker compose up -d --build
+Пересобрать и заново запустить проект: docker compose up -d --build
 
-Посмотреть логи всех сервисов
-docker compose logs -f
+Посмотреть логи всех сервисов: docker compose logs -f
 
-Посмотреть логи только приложения
-docker compose logs -f app
+Посмотреть логи только приложения: docker compose logs -f app
 
-Посмотреть логи только базы данных
-docker compose logs -f db
+Посмотреть логи только базы данных: docker compose logs -f db
 
 **Структура Docker**
 
