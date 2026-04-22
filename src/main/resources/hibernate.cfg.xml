@@ -24,7 +24,7 @@
         <!-- Поведение -->
 
         <!--Liquibase → создаёт таблицы, а Hibernate → проверяет структуру-->
-        <property name="hibernate.hbm2ddl.auto">validate</property>
+        <!--<property name="hibernate.hbm2ddl.auto">validate</property>-->
 
         <property name="hibernate.show_sql">true</property>
         <property name="hibernate.format_sql">true</property>
