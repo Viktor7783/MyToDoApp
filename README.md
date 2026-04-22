@@ -54,8 +54,11 @@ docker compose up --build
 **Что произойдёт при запуске**
 
 Docker Compose поднимет 3 сервиса:
+
 • db — контейнер с MySQL
+
 • migrate — контейнер, который выполнит Liquibase-миграции
+
 • app — контейнер с приложением MyToDoApp в Tomcat
 
 **Адрес приложения**
@@ -68,18 +71,31 @@ http://localhost:8080/mytodoapp/register
 **Полезные команды**
 
 Запуск в фоне
+
 docker compose up -d --build
+
 Остановить контейнеры
+
 docker compose down
+
 Полностью удалить контейнеры и volume базы данных
+
 docker compose down -v
+
 Пересобрать и заново запустить проект
+
 docker compose up -d --build
+
 Посмотреть логи всех сервисов
+
 docker compose logs -f
+
 Посмотреть логи только приложения
+
 docker compose logs -f app
+
 Посмотреть логи только базы данных
+
 docker compose logs -f db
 
 **Структура Docker**
@@ -87,25 +103,35 @@ docker compose logs -f db
 **Dockerfile**
 
 Файл Dockerfile нужен для сборки образа приложения:
+
 • на первой стадии проект собирается через Gradle в WAR
+
 • на второй стадии WAR разворачивается в Tomcat
 
 docker-compose.yml
+
 Файл docker-compose.yml нужен для запуска всех сервисов проекта вместе:
+
 • базы данных
+
 • миграций
+
 • веб-приложения
 
 **База данных**
 
 В проекте используется MySQL.
+
 Структура базы создаётся автоматически через Liquibase при запуске контейнера migrate.
+
 Данные MySQL сохраняются в Docker volume, поэтому при обычной остановке контейнеров база не теряется.
 
 **Тестирование**
 
 Для проекта написаны unit-тесты с использованием:
+
 • JUnit 5
+
 • Mockito
 
 **Запуск тестов:**
@@ -113,4 +139,5 @@ docker-compose.yml
 ./gradlew test
 
 Автор: Коротков Виктор
+
 Учебный проект MyToDoApp.
